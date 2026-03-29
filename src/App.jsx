@@ -15,6 +15,11 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [feedback, setFeedback] = useState({ text: '', type: '', visible: false });
   
+  // Session Stats
+  const [sessionStatus, setSessionStatus] = useState('active'); // 'active' | 'results'
+  const [edgeStats, setEdgeStats] = useState({});
+  const [lastShownAt, setLastShownAt] = useState(Date.now());
+  
   const appContainerRef = useRef(null);
 
   const getAvailableEdges = useCallback(() => {
@@ -29,6 +34,7 @@ function App() {
     const randomIndex = Math.floor(Math.random() * available.length);
     const newEdge = available[randomIndex];
     setCurrentEdge(newEdge);
+    setLastShownAt(Date.now());
   }, [getAvailableEdges]);
 
   // Initial load or when buffer setting changes
@@ -49,8 +55,8 @@ function App() {
   };
 
   const handleKeyPress = useCallback((e) => {
-    // Ignore keypress if settings modal is open or typing in input
-    if (isSettingsOpen || e.target.tagName === 'INPUT') return;
+    // Ignore keypress if settings modal is open, in results mode, or typing in input
+    if (isSettingsOpen || sessionStatus === 'results' || e.target.tagName === 'INPUT') return;
     
     // Some keys shouldn't trigger grading (Shift, Ctrl, etc.)
     if (e.key.length > 1) return;
@@ -70,6 +76,18 @@ function App() {
 
     if (pressedKey.toUpperCase() === correctKey.toUpperCase()) {
       // Correct!
+      const timeTaken = Date.now() - lastShownAt;
+      setEdgeStats(prev => {
+        const current = prev[currentEdge.id] || { count: 0, totalTime: 0 };
+        return {
+          ...prev,
+          [currentEdge.id]: {
+            count: current.count + 1,
+            totalTime: current.totalTime + timeTaken
+          }
+        };
+      });
+
       setStreak(prev => prev + 1);
       setTotalCorrect(prev => prev + 1);
       showFeedback('Верно!', 'correct');
@@ -79,7 +97,7 @@ function App() {
       setStreak(0);
       showFeedback(`Ошибка! Правильно: ${correctKey}`, 'incorrect');
     }
-  }, [currentEdge, mapping, isSettingsOpen, selectRandomEdge]);
+  }, [currentEdge, mapping, isSettingsOpen, sessionStatus, lastShownAt, selectRandomEdge]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyPress);
@@ -95,6 +113,15 @@ function App() {
 
   const loadPreset = (presetName) => {
     setMapping(DEFAULT_MAPPINGS[presetName]);
+  };
+
+  const startNewSession = () => {
+    setEdgeStats({});
+    setStreak(0);
+    setTotalCorrect(0);
+    setTotalAnswers(0);
+    setSessionStatus('active');
+    selectRandomEdge();
   };
 
   const accuracy = totalAnswers === 0 ? 0 : Math.round((totalCorrect / totalAnswers) * 100);
@@ -121,40 +148,95 @@ function App() {
           </div>
         </div>
 
-        <div className="controls">
+        <div className="controls" style={{ display: 'flex', gap: '0.5rem' }}>
+          {sessionStatus === 'active' && (
+            <button onClick={() => setSessionStatus('results')} style={{ borderColor: 'var(--accent)', color: '#60a5fa' }}>
+              Завершить сессию
+            </button>
+          )}
           <button onClick={() => setIsSettingsOpen(true)}>Настройки</button>
         </div>
       </header>
 
-      <main className="main-content">
-        <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          
-          {currentEdge && (
-            <div className="edge-container">
-              {/* Primary Face (Top logic is we show primary larger) */}
-              <div 
-                className="edge-face primary" 
-                style={{ backgroundColor: COLORS[currentEdge.face1] }}
-                title={`Основной: ${currentEdge.face1}`}
-              ></div>
-              {/* Secondary Face (Tilted/depth logic) */}
-              <div 
-                className="edge-face secondary" 
-                style={{ backgroundColor: COLORS[currentEdge.face2] }}
-                title={`Вторичный: ${currentEdge.face2}`}
-              ></div>
+      {sessionStatus === 'results' ? (
+        <main className="main-content" style={{ justifyContent: 'flex-start', overflowY: 'auto' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '800px' }}>
+            <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Итоги сессии</h2>
+            
+            <div className="results-grid">
+              {Object.entries(edgeStats).sort((a, b) => b[1].count - a[1].count).map(([id, stats]) => {
+                const edge = EDGES.find(e => e.id === id);
+                if (!edge) return null;
+                const avgTime = (stats.totalTime / stats.count / 1000).toFixed(2);
+                
+                let timeColor = 'var(--success)';
+                if (avgTime > 3) timeColor = 'var(--error)';
+                else if (avgTime > 2) timeColor = '#f97316'; // orange
+
+                return (
+                  <div key={id} className="result-card glass-panel" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div className="edge-mini">
+                      <div className="edge-mini-primary" style={{ backgroundColor: COLORS[edge.face1] }}></div>
+                      <div className="edge-mini-secondary" style={{ backgroundColor: COLORS[edge.face2] }}></div>
+                    </div>
+                    <div className="result-details" style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{id}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Выпало раз: {stats.count}</div>
+                      <div style={{ fontSize: '1rem', color: timeColor, fontWeight: 600 }}>
+                        {avgTime}s
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
+            
+            {Object.keys(edgeStats).length === 0 && (
+              <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>За эту сессию вы не угадали ни одного ребра.</p>
+            )}
 
-          <div className={`feedback-text ${feedback.type} ${feedback.visible ? 'show' : ''}`}>
-            {feedback.text}
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
+              <button 
+                onClick={startNewSession}
+                className="preset-btn"
+                style={{ fontSize: '1.1rem', padding: '0.75rem 2rem' }}
+              >
+                Начать новую сессию
+              </button>
+            </div>
           </div>
+        </main>
+      ) : (
+        <main className="main-content">
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            
+            {currentEdge && (
+              <div className="edge-container">
+                {/* Primary Face (Top logic is we show primary larger) */}
+                <div 
+                  className="edge-face primary" 
+                  style={{ backgroundColor: COLORS[currentEdge.face1] }}
+                  title={`Основной: ${currentEdge.face1}`}
+                ></div>
+                {/* Secondary Face (Tilted/depth logic) */}
+                <div 
+                  className="edge-face secondary" 
+                  style={{ backgroundColor: COLORS[currentEdge.face2] }}
+                  title={`Вторичный: ${currentEdge.face2}`}
+                ></div>
+              </div>
+            )}
 
-          <div className="instruction">
-            Нажмите букву клавиатуры, соответствующую ребру
+            <div className={`feedback-text ${feedback.type} ${feedback.visible ? 'show' : ''}`}>
+              {feedback.text}
+            </div>
+
+            <div className="instruction">
+              Нажмите букву клавиатуры, соответствующую ребру
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      )}
 
       {/* Settings Modal */}
       <div className={`modal-overlay ${isSettingsOpen ? 'open' : ''} glass-panel`} style={{ padding: 0, borderRadius: 0, border: 'none' }}>
