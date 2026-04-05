@@ -21,6 +21,7 @@ function App() {
   const [lastShownAt, setLastShownAt] = useState(Date.now());
   const [sessionStartTime, setSessionStartTime] = useState(Date.now());
   const [sessionDuration, setSessionDuration] = useState(0);
+  const [allSessionTimes, setAllSessionTimes] = useState([]);
   
   const appContainerRef = useRef(null);
 
@@ -89,6 +90,8 @@ function App() {
           }
         };
       });
+      
+      setAllSessionTimes(prev => [...prev, timeTaken]);
 
       setStreak(prev => prev + 1);
       setTotalCorrect(prev => prev + 1);
@@ -124,6 +127,7 @@ function App() {
     setTotalAnswers(0);
     setSessionStartTime(Date.now());
     setSessionDuration(0);
+    setAllSessionTimes([]);
     setSessionStatus('active');
     selectRandomEdge();
   };
@@ -195,9 +199,17 @@ function App() {
                 </div>
               </div>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Среднее на ребро</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Медианное время</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
-                  {totalCorrect > 0 ? (sessionDuration / totalCorrect / 1000).toFixed(2) : '0.00'}s
+                  {(() => {
+                    if (allSessionTimes.length === 0) return '0.00';
+                    const sorted = [...allSessionTimes].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    const median = sorted.length % 2 !== 0 
+                      ? sorted[mid] 
+                      : (sorted[mid - 1] + sorted[mid]) / 2;
+                    return (median / 1000).toFixed(2);
+                  })()}s
                 </div>
               </div>
               <div style={{ textAlign: 'center' }}>
