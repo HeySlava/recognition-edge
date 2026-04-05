@@ -19,6 +19,8 @@ function App() {
   const [sessionStatus, setSessionStatus] = useState('active'); // 'active' | 'results'
   const [edgeStats, setEdgeStats] = useState({});
   const [lastShownAt, setLastShownAt] = useState(Date.now());
+  const [sessionStartTime, setSessionStartTime] = useState(Date.now());
+  const [sessionDuration, setSessionDuration] = useState(0);
   
   const appContainerRef = useRef(null);
 
@@ -120,8 +122,15 @@ function App() {
     setStreak(0);
     setTotalCorrect(0);
     setTotalAnswers(0);
+    setSessionStartTime(Date.now());
+    setSessionDuration(0);
     setSessionStatus('active');
     selectRandomEdge();
+  };
+
+  const endSession = () => {
+    setSessionDuration(Date.now() - sessionStartTime);
+    setSessionStatus('results');
   };
 
   const accuracy = totalAnswers === 0 ? 0 : Math.round((totalCorrect / totalAnswers) * 100);
@@ -150,7 +159,7 @@ function App() {
 
         <div className="controls" style={{ display: 'flex', gap: '0.5rem' }}>
           {sessionStatus === 'active' && (
-            <button onClick={() => setSessionStatus('results')} style={{ borderColor: 'var(--accent)', color: '#60a5fa' }}>
+            <button onClick={endSession} style={{ borderColor: 'var(--accent)', color: '#60a5fa' }}>
               Завершить сессию
             </button>
           )}
@@ -162,6 +171,40 @@ function App() {
         <main className="main-content" style={{ justifyContent: 'flex-start', overflowY: 'auto' }}>
           <div className="glass-panel" style={{ width: '100%', maxWidth: '800px' }}>
             <h2 style={{ marginBottom: '1.5rem', textAlign: 'center' }}>Итоги сессии</h2>
+            
+            <div className="session-summary" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-around', 
+              marginBottom: '2rem',
+              padding: '1rem',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Общее время</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                  {(() => {
+                    const seconds = Math.floor((sessionDuration / 1000) % 60);
+                    const minutes = Math.floor((sessionDuration / (1000 * 60)) % 60);
+                    const hours = Math.floor((sessionDuration / (1000 * 60 * 60)) % 24);
+                    
+                    const pad = (num) => num.toString().padStart(2, '0');
+                    return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+                  })()}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Среднее на ребро</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                  {totalCorrect > 0 ? (sessionDuration / totalCorrect / 1000).toFixed(2) : '0.00'}s
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Ребер угадано</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{totalCorrect}</div>
+              </div>
+            </div>
             
             <div className="results-grid">
               {Object.entries(edgeStats).sort((a, b) => b[1].count - a[1].count).map(([id, stats]) => {
